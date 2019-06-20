@@ -259,9 +259,7 @@ fn main() -> Result<()> {
                 _ => (),
             }
         }
-        // client.poll()?;
-        let poll_result = client.poll();
-        debug!("poll() = {:?}", poll_result);
+        client.poll()?;
     }
     Ok(())
 }

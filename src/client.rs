@@ -71,11 +71,13 @@ impl Client {
     }
 
     pub fn poll(&mut self) -> SwayResult<()> {
-        let (payload_type, payload) = self.read_response()?;
-        // let payload = match self.read_response() {
-        //     Ok(value) => value,
-        //     Err(std::io::Error::Os { code: 11, .. }) =>
-        // };
+        let (payload_type, payload) = match self.read_response() {
+            Ok(value) => value,
+            // EAGAIN/EWOULDBLOCK means there's no data right now, but this isn't
+            // an error for us in this scenario since we are checking with a timeout.
+            Err(Error::Io(ref err)) if err.raw_os_error() == Some(11) => return Ok(()),
+            err => err?,
+        };
         if payload_type & IpcEvent::Workspace as u32 > 0 {
             if let Some(ref tx) = self.subscription_events {
                 tx.send((IpcEvent::from_u32(payload_type).unwrap(), payload))
