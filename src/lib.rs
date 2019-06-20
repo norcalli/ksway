@@ -6,10 +6,9 @@ use itertools::join;
 use serde::Serialize;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use try_block::try_block;
 
 // Naming convention: https://docs.microsoft.com/en-us/dotnet/standard/design-guidelines/enum
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, num_derive::FromPrimitive)]
 #[serde(rename_all = "snake_case")]
 pub enum IpcEvent {
     Workspace = 0x80000000,

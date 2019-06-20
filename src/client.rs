@@ -1,10 +1,11 @@
-use byteorder::{NativeEndian, ReadBytesExt};
-use crossbeam_channel as chan;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use try_block::try_block;
+
+use byteorder::{NativeEndian, ReadBytesExt};
+use crossbeam_channel as chan;
+use num_traits::FromPrimitive;
 
 use crate::ipc_command;
 use crate::{guess_sway_socket_path, Error, IpcCommand, IpcEvent, SwayResult};
@@ -12,7 +13,7 @@ use crate::{guess_sway_socket_path, Error, IpcCommand, IpcEvent, SwayResult};
 pub struct Client {
     socket: UnixStream,
     socket_path: PathBuf,
-    subscription_events: Option<chan::Sender<Response>>,
+    subscription_events: Option<chan::Sender<(IpcEvent, Vec<u8>)>>,
 }
 
 // struct Subscription {
@@ -24,7 +25,7 @@ pub struct Client {
 //     type Item = (u32, Vec<u8>);
 // }
 
-type Response = (u32, Vec<u8>);
+type RawResponse = (u32, Vec<u8>);
 
 impl Client {
     // fn receive() -> SwayResult<(u32, Vec<u8>)> {
@@ -70,14 +71,15 @@ impl Client {
     }
 
     pub fn poll(&mut self) -> SwayResult<()> {
-        let payload = self.read_response()?;
+        let (payload_type, payload) = self.read_response()?;
         // let payload = match self.read_response() {
         //     Ok(value) => value,
-        //     Err(std::io::Error::Os { code: 11, .. }) => 
+        //     Err(std::io::Error::Os { code: 11, .. }) =>
         // };
-        if payload.0 & IpcEvent::Workspace as u32 > 0 {
+        if payload_type & IpcEvent::Workspace as u32 > 0 {
             if let Some(ref tx) = self.subscription_events {
-                tx.send(payload).map_err(|_| Error::SubscriptionError)?;
+                tx.send((IpcEvent::from_u32(payload_type).unwrap(), payload))
+                    .map_err(|_| Error::SubscriptionError)?;
             }
         } else {
             // TODO figure out
@@ -87,7 +89,7 @@ impl Client {
         Ok(())
     }
 
-    fn read_response(&mut self) -> SwayResult<Response> {
+    fn read_response(&mut self) -> SwayResult<RawResponse> {
         let mut buffer = *b"i3-ipc";
         self.socket.read_exact(&mut buffer).map_err(Error::Io)?;
         debug_assert_eq!(b"i3-ipc", &buffer);
@@ -108,14 +110,15 @@ impl Client {
         let code = command.code() as u32;
         self.send_command(command)?;
         loop {
-            let payload = self.read_response()?;
-            if payload.0 & IpcEvent::Workspace as u32 > 0 {
+            let (payload_type, payload) = self.read_response()?;
+            if payload_type & IpcEvent::Workspace as u32 > 0 {
                 if let Some(ref tx) = self.subscription_events {
-                    tx.send(payload).map_err(|_| Error::SubscriptionError)?;
+                    tx.send((IpcEvent::from_u32(payload_type).unwrap(), payload))
+                        .map_err(|_| Error::SubscriptionError)?;
                 }
             } else {
-                debug_assert_eq!(code, payload.0);
-                return Ok(payload.1);
+                debug_assert_eq!(code, payload_type);
+                return Ok(payload);
             }
         }
     }
@@ -128,7 +131,7 @@ impl Client {
     pub fn subscribe(
         &mut self,
         event_types: Vec<IpcEvent>,
-    ) -> SwayResult<chan::Receiver<Response>> {
+    ) -> SwayResult<chan::Receiver<(IpcEvent, Vec<u8>)>> {
         if self.subscription_events.is_some() {
             return Err(Error::AlreadySubscribed);
         }
