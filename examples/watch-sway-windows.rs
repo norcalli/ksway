@@ -204,6 +204,7 @@ fn main() -> Result<()> {
     info!("{}", client.path().display());
 
     let rx = client.subscribe(vec![IpcEvent::Window])?;
+    let mut last_focused = None;
     loop {
         while let Ok((_payload_type, payload)) = rx.try_recv() {
             let payload = str::from_utf8(&payload)?;
@@ -216,6 +217,7 @@ fn main() -> Result<()> {
                     let container = &event["container"];
                     // Tiling windows only
                     if container.is_object() && container["type"].as_str() != Some("floating_con") {
+                        last_focused = Some(container.clone());
                         match sploosh(&mut client, &mut redis_conn, &container) {
                             Err(err) => error!("sploosh() = {:?}", err),
                             res => info!("sploosh() = {:?}", res),
@@ -223,11 +225,16 @@ fn main() -> Result<()> {
                     }
                 }
                 Some("floating") => {
-                    let container = &event["container"];
-                    thread::sleep(Duration::from_millis(100));
-                    // Trigger sploosh by refocusing.
-                    client.run(command::raw("focus mode_toggle"))?;
-                    client.run(command::raw("focus mode_toggle"))?;
+                    if let Some(ref container) = last_focused {
+                        match sploosh(&mut client, &mut redis_conn, &container) {
+                            Err(err) => error!("sploosh() = {:?}", err),
+                            res => info!("sploosh() = {:?}", res),
+                        }
+                    }
+                    // thread::sleep(Duration::from_millis(100));
+                    // // Trigger sploosh by refocusing.
+                    // client.run(command::raw("focus mode_toggle"))?;
+                    // client.run(command::raw("focus mode_toggle"))?;
                 }
                 _ => (),
             }
