@@ -1,4 +1,6 @@
 use std::str;
+use std::thread;
+use std::time::Duration;
 
 use criteria::*;
 use derive_more::*;
@@ -168,19 +170,7 @@ fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonVal
         let (mx, my) = VERBS
             .iter()
             // Possible positions
-            .map(|verbs| {
-                dbg!(calculate_coords(
-                    w_x,
-                    w_y,
-                    w_w,
-                    w_h,
-                    r_w,
-                    r_h,
-                    r_x,
-                    r_y,
-                    dbg!(verbs)
-                ))
-            })
+            .map(|verbs| calculate_coords(w_x, w_y, w_w, w_h, r_w, r_h, r_x, r_y, verbs))
             .max_by_key(|(x, y)| {
                 // Distance from topleft of focused window
                 let result = (fx - x).pow(2) + (fy - y).pow(2);
@@ -233,6 +223,8 @@ fn main() -> Result<()> {
                     }
                 }
                 Some("floating") => {
+                    let container = &event["container"];
+                    thread::sleep(Duration::from_millis(100));
                     // Trigger sploosh by refocusing.
                     client.run(command::raw("focus mode_toggle"))?;
                     client.run(command::raw("focus mode_toggle"))?;
