@@ -107,7 +107,7 @@ impl IpcCommand {
     }
 }
 
-#[derive(derive_more::From, Debug)]
+#[derive(derive_more::From, derive_more::Display, Debug)]
 pub enum Error {
     SockPathNotFound,
     SubscriptionError,
@@ -135,6 +135,8 @@ pub fn guess_sway_socket_path() -> SwayResult<PathBuf> {
 }
 
 pub mod criteria {
+    use std::fmt::Display;
+
     #[derive(derive_more::Display)]
     pub enum Criteria {
         /// Compare value against the app id. Can be a regular expression. If value is __focused__, then the app id must be the same as that of the
@@ -228,20 +230,29 @@ pub mod criteria {
         }
     }
 
+    impl<T> OrFocused<T> {
+        fn map<U, F: FnOnce(T) -> U>(self, f: F) -> OrFocused<U> {
+            match self {
+                OrFocused::Focused => OrFocused::Focused,
+                OrFocused::Value(t) => OrFocused::Value(f(t)),
+            }
+        }
+    }
+
     pub fn focused<T>() -> OrFocused<T> {
         OrFocused::Focused
     }
 
     /// Compare value against the app id. Can be a regular expression. If value is __focused__, then the app id must be the same as that of the
     /// currently focused window. app_id are specific to Wayland applications.
-    pub fn app_id<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::AppId(t.into())
+    pub fn app_id<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::AppId(t.into().map(|s| s.to_string()))
     }
 
     /// Compare value against the window class. Can be a regular expression. If value is __focused__, then the window class must be the same as
     /// that of the currently focused window. class are specific to X11 applications.
-    pub fn class<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::Class(t.into())
+    pub fn class<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::Class(t.into().map(|s| s.to_string()))
     }
 
     /// Compare against the internal container ID, which you can find via IPC. If value is __focused__, then the id must be the same as that of the
@@ -267,14 +278,14 @@ pub mod criteria {
 
     /// Compare value against the window instance. Can be a regular expression. If value is __focused__, then the window instance must be the same
     /// as that of the currently focused window.
-    pub fn instance<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::Instance(t.into())
+    pub fn instance<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::Instance(t.into().map(|s| s.to_string()))
     }
 
     /// Compare value against the window shell, such as "xdg_shell" or "xwayland".  Can be a regular expression. If value is __focused__, then the
     /// shell must be the same as that of the currently focused window.
-    pub fn shell<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::Shell(t.into())
+    pub fn shell<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::Shell(t.into().map(|s| s.to_string()))
     }
 
     /// Matches tiling windows.
@@ -284,27 +295,27 @@ pub mod criteria {
 
     /// Compare against the window title. Can be a regular expression. If value is __focused__, then the window title must be the same as that of
     /// the currently focused window.
-    pub fn title<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::Title(t.into())
+    pub fn title<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::Title(t.into().map(|s| s.to_string()))
     }
 
     /// Compares the urgent state of the window. Can be "first", "last", "latest", "newest", "oldest" or "recent".
     // TODO make enum
-    pub fn urgent<T: Into<String>>(t: T) -> Criteria {
-        Criteria::Urgent(t.into())
+    pub fn urgent<T: Display>(t: T) -> Criteria {
+        Criteria::Urgent(t.to_string())
     }
 
     /// Compare against the window role (WM_WINDOW_ROLE). Can be a regular expression. If value is __focused__, then the window role must be the
     /// same as that of the currently focused window.
-    pub fn window_role<T: Into<OrFocused<String>>>(t: T) -> Criteria {
-        Criteria::WindowRole(t.into())
+    pub fn window_role<S: Display, T: Into<OrFocused<S>>>(t: T) -> Criteria {
+        Criteria::WindowRole(t.into().map(|s| s.to_string()))
     }
 
     /// Compare against the window type (_NET_WM_WINDOW_TYPE). Possible values are normal, dialog, utility, toolbar, splash, menu, dropdown_menu,
     /// popup_menu, tooltip and notification.
     // TODO make enum
-    pub fn window_type<T: Into<String>>(t: T) -> Criteria {
-        Criteria::WindowType(t.into())
+    pub fn window_type<T: Display>(t: T) -> Criteria {
+        Criteria::WindowType(t.to_string())
     }
 
     /// Compare against the workspace name for this view. Can be a regular expression. If the value is __focused__, then all the views on the cur‐

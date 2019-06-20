@@ -3,6 +3,7 @@ use crossbeam_channel as chan;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use try_block::try_block;
 
 use crate::ipc_command;
@@ -54,8 +55,11 @@ impl Client {
 
     pub fn connect_to_path<P: Into<PathBuf>>(path: P) -> SwayResult<Self> {
         let path = path.into();
+        let socket = UnixStream::connect(&path)?;
+        // socket.set_nonblocking(true)?;
+        socket.set_read_timeout(Some(Duration::from_secs(1)))?;
         Ok(Self {
-            socket: UnixStream::connect(&path)?,
+            socket,
             socket_path: path,
             subscription_events: None,
         })
@@ -65,7 +69,25 @@ impl Client {
         Self::connect_to_path(guess_sway_socket_path()?)
     }
 
-    pub fn read_response(&mut self) -> SwayResult<Response> {
+    pub fn poll(&mut self) -> SwayResult<()> {
+        let payload = self.read_response()?;
+        // let payload = match self.read_response() {
+        //     Ok(value) => value,
+        //     Err(std::io::Error::Os { code: 11, .. }) => 
+        // };
+        if payload.0 & IpcEvent::Workspace as u32 > 0 {
+            if let Some(ref tx) = self.subscription_events {
+                tx.send(payload).map_err(|_| Error::SubscriptionError)?;
+            }
+        } else {
+            // TODO figure out
+            unreachable!();
+            // return Ok(payload);
+        }
+        Ok(())
+    }
+
+    fn read_response(&mut self) -> SwayResult<Response> {
         let mut buffer = *b"i3-ipc";
         self.socket.read_exact(&mut buffer).map_err(Error::Io)?;
         debug_assert_eq!(b"i3-ipc", &buffer);
@@ -82,7 +104,8 @@ impl Client {
         Ok(())
     }
 
-    pub fn ipc(&mut self, command: IpcCommand) -> SwayResult<Response> {
+    pub fn ipc(&mut self, command: IpcCommand) -> SwayResult<Vec<u8>> {
+        let code = command.code() as u32;
         self.send_command(command)?;
         loop {
             let payload = self.read_response()?;
@@ -91,12 +114,13 @@ impl Client {
                     tx.send(payload).map_err(|_| Error::SubscriptionError)?;
                 }
             } else {
-                return Ok(payload);
+                debug_assert_eq!(code, payload.0);
+                return Ok(payload.1);
             }
         }
     }
 
-    pub fn run<T: ToString>(&mut self, command: T) -> SwayResult<Response> {
+    pub fn run<T: ToString>(&mut self, command: T) -> SwayResult<Vec<u8>> {
         self.ipc(ipc_command::run(command.to_string()))
     }
 
@@ -110,6 +134,7 @@ impl Client {
         }
         let (tx, rx) = chan::unbounded();
         self.subscription_events = Some(tx);
+        self.ipc(ipc_command::subscribe(event_types))?;
 
         Ok(rx)
 
