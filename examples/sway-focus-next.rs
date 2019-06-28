@@ -1,5 +1,4 @@
-use std::iter::Peekable;
-use std::str::{self, Chars};
+use std::str;
 
 use derive_more::*;
 use json::JsonValue;
@@ -96,7 +95,13 @@ fn parse_expression(expr: impl AsRef<str>) -> Result<Expression, Error> {
 
 fn main() -> Result<(), Error> {
     let mut expression: Option<Expression> = None;
-    for arg in std::env::args().skip(1) {
+    let mut args = std::env::args().skip(1);
+    let increment = args
+        .next()
+        .expect("Need an increment")
+        .parse::<i32>()
+        .unwrap();
+    for arg in args {
         let new_clause = parse_expression(arg)?;
         expression = match expression {
             Some(expression) => Some(Box::new(move |js: &JsonValue| {
@@ -122,13 +127,11 @@ fn main() -> Result<(), Error> {
         None::<()>
     });
 
-    let increment = 1;
-
     let mut target_window = &windows[0];
 
     for (i, window) in windows.iter().enumerate() {
         if window["focused"].as_bool() == Some(true) {
-            let next_window_idx = (i + increment) % windows.len();
+            let next_window_idx = ((i + windows.len()) as i32 + increment) as usize % windows.len();
             target_window = &windows[next_window_idx];
             break;
         }
