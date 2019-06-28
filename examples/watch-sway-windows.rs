@@ -8,6 +8,8 @@ use redis::{Client as RedisClient, Commands, Connection};
 use criteria::*;
 use ksway::{command, criteria, ipc_command, Client, IpcEvent};
 
+mod utils;
+
 #[derive(From, Display, Debug)]
 enum Error {
     FocusedWorkspaceNotFound,
@@ -16,33 +18,6 @@ enum Error {
     Utf8(str::Utf8Error),
     Json(json::Error),
     Redis(redis::RedisError),
-}
-
-fn preorder<T, F: FnMut(&JsonValue) -> Option<T>>(value: &JsonValue, visitor: &mut F) -> Option<T> {
-    match visitor(value) {
-        None => (),
-        value => return value,
-    }
-    match value {
-        JsonValue::Object(obj) => {
-            for (_k, v) in obj.iter() {
-                match preorder(v, visitor) {
-                    None => (),
-                    value => return value,
-                }
-            }
-        }
-        JsonValue::Array(arr) => {
-            for v in arr.iter() {
-                match preorder(v, visitor) {
-                    None => (),
-                    value => return value,
-                }
-            }
-        }
-        _ => (),
-    }
-    None
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -139,7 +114,7 @@ fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonVal
 
     let tree = payload_to_json(client.ipc(ipc_command::get_tree())?)?;
     // Find floating & visible windows to reposition
-    preorder(&tree, &mut |value| -> Option<()> {
+    utils::preorder(&tree, &mut |value| -> Option<()> {
         if !(value["type"].as_str() == Some("floating_con")
             && value["visible"].as_bool() == Some(true))
         {
