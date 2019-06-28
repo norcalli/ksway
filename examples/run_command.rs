@@ -23,7 +23,7 @@ fn main() -> Result<(), Error> {
     let mut i = 10;
     loop {
         if let Ok(c) = rx.try_recv() {
-            println!("{}, {}", c.0, str::from_utf8(&c.1)?);
+            println!("{:?}, {}", c.0, str::from_utf8(&c.1)?);
             println!(
                 "cmd: {}\n->{}",
                 &cmd,
@@ -35,8 +35,7 @@ fn main() -> Result<(), Error> {
             }
         }
         println!("timeout");
-        // client.poll()?;
-        client.poll();
+        client.poll()?;
     }
     Ok(())
 }

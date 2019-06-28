@@ -16,15 +16,6 @@ pub struct Client {
     subscription_events: Option<chan::Sender<(IpcEvent, Vec<u8>)>>,
 }
 
-// struct Subscription {
-//     socket: UnixStream,
-//     buffer: Vec<u8>,
-// }
-
-// impl Iterator for Subscription {
-//     type Item = (u32, Vec<u8>);
-// }
-
 type RawResponse = (u32, Vec<u8>);
 
 impl Client {
@@ -129,7 +120,6 @@ impl Client {
         self.ipc(ipc_command::run(command.to_string()))
     }
 
-    // fn subscribe(&self) -> SwayResult<impl Iterator<Item = (u32, &'_ [u8])>> {
     pub fn subscribe(
         &mut self,
         event_types: Vec<IpcEvent>,
@@ -142,30 +132,5 @@ impl Client {
         self.ipc(ipc_command::subscribe(event_types))?;
 
         Ok(rx)
-
-        //         let mut socket = self.socket.try_clone()?;
-        //         let mut payload_buffer = Vec::new();
-        //         ipc_command::subscribe(event_types).write(&mut socket)?;
-        //         let iter = std::iter::from_fn(move || {
-        //             // TODO figure out how to surface errors.
-        //             let result: io::Result<_> = (|| {
-        //                 {
-        //                     let mut buffer = *b"i3-ipc";
-        //                     socket.read_exact(&mut buffer)?;
-        //                     debug_assert_eq!(b"i3-ipc", &buffer);
-        //                 }
-        //                 let payload_length = socket.read_u32::<NativeEndian>()?;
-        //                 let payload_type = socket.read_u32::<NativeEndian>()?;
-        //                 // let mut payload_buffer = vec![0u8; payload_length as usize];
-        //                 if payload_length as usize > payload_buffer.len() {
-        //                     payload_buffer.reserve(payload_length as usize - payload_buffer.len());
-        //                 }
-        //                 socket.read_exact(&mut payload_buffer)?;
-        //                 Ok(payload_type)
-        //             })();
-        //             let payload_type = result.unwrap();
-        //             Some((payload_type, payload_buffer.clone()))
-        //         });
-        //         Ok(iter)
     }
 }
