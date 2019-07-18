@@ -8,7 +8,7 @@ use crossbeam_channel as chan;
 use num_traits::FromPrimitive;
 
 use crate::ipc_command;
-use crate::{guess_sway_socket_path, Error, IpcCommand, IpcEvent, SwayResult};
+use crate::{guess_sway_socket_path, Error, IpcCommand, IpcEvent, Result};
 
 pub struct Client {
     socket: UnixStream,
@@ -19,33 +19,11 @@ pub struct Client {
 type RawResponse = (u32, Vec<u8>);
 
 impl Client {
-    // fn receive() -> SwayResult<(u32, Vec<u8>)> {
-    //     Ok((0, vec![]))
-    // }
-
-    // fn try_receive(&mut self, types: &[u32]) -> SwayResult<Option<(u32, Vec<u8>)>> {
-    //     let mut i = self.payloads.len();
-    //     while i > 0 {
-    //         let payload = &self.payloads[i];
-    //         if types.contains(&payload.0) {
-    //             return Ok(Some(self.payloads.remove(i)));
-    //         }
-    //         i -= 1;
-    //     }
-    //     let payload = self.read_response()?;
-    //     if types.contains(&payload.0) {
-    //         Ok(Some(payload))
-    //     } else {
-    //         self.payloads.push(payload);
-    //         Ok(None)
-    //     }
-    // }
-
-    pub fn path(&self) -> &Path {
+    pub fn socket_path(&self) -> &Path {
         &self.socket_path
     }
 
-    pub fn connect_to_path<P: Into<PathBuf>>(path: P) -> SwayResult<Self> {
+    pub fn connect_to_path<P: Into<PathBuf>>(path: P) -> Result<Self> {
         let path = path.into();
         let socket = UnixStream::connect(&path)?;
         // socket.set_nonblocking(true)?;
@@ -57,11 +35,11 @@ impl Client {
         })
     }
 
-    pub fn connect() -> SwayResult<Self> {
+    pub fn connect() -> Result<Self> {
         Self::connect_to_path(guess_sway_socket_path()?)
     }
 
-    pub fn poll(&mut self) -> SwayResult<()> {
+    pub fn poll(&mut self) -> Result<()> {
         let (payload_type, payload) = match self.read_response() {
             Ok(value) => value,
             // EAGAIN/EWOULDBLOCK means there's no data right now, but this isn't
@@ -82,7 +60,7 @@ impl Client {
         Ok(())
     }
 
-    fn read_response(&mut self) -> SwayResult<RawResponse> {
+    fn read_response(&mut self) -> Result<RawResponse> {
         let mut buffer = *b"i3-ipc";
         self.socket.read_exact(&mut buffer).map_err(Error::Io)?;
         debug_assert_eq!(b"i3-ipc", &buffer);
@@ -94,12 +72,12 @@ impl Client {
         Ok(payload)
     }
 
-    fn send_command(&mut self, command: IpcCommand) -> SwayResult<()> {
+    fn send_command(&mut self, command: IpcCommand) -> Result<()> {
         command.write(&mut self.socket).map_err(Error::Io)?;
         Ok(())
     }
 
-    pub fn ipc(&mut self, command: IpcCommand) -> SwayResult<Vec<u8>> {
+    pub fn ipc(&mut self, command: IpcCommand) -> Result<Vec<u8>> {
         let code = command.code() as u32;
         self.send_command(command)?;
         loop {
@@ -116,14 +94,14 @@ impl Client {
         }
     }
 
-    pub fn run<T: ToString>(&mut self, command: T) -> SwayResult<Vec<u8>> {
+    pub fn run<T: ToString>(&mut self, command: T) -> Result<Vec<u8>> {
         self.ipc(ipc_command::run(command.to_string()))
     }
 
     pub fn subscribe(
         &mut self,
         event_types: Vec<IpcEvent>,
-    ) -> SwayResult<chan::Receiver<(IpcEvent, Vec<u8>)>> {
+    ) -> Result<chan::Receiver<(IpcEvent, Vec<u8>)>> {
         if self.subscription_events.is_some() {
             return Err(Error::AlreadySubscribed);
         }

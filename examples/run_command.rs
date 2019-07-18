@@ -15,7 +15,7 @@ fn main() -> Result<(), Error> {
 
     use criteria::*;
 
-    println!("{}", client.path().display());
+    println!("{}", client.socket_path().display());
     let cmd = command::raw("focus").with_criteria(vec![floating(), title("mpv")]);
     println!("cmd: {}\n->{}", &cmd, str::from_utf8(&client.run(&cmd)?)?);
 

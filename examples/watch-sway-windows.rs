@@ -172,10 +172,8 @@ fn main() -> Result<()> {
     let mut client = Client::connect()?;
     let redis_client = RedisClient::open("redis://127.0.0.1")?;
     let mut redis_conn = redis_client.get_connection()?;
-    // let stdout = stdout();
-    // let mut stdout = stdout.lock();
 
-    info!("{}", client.path().display());
+    info!("{}", client.socket_path().display());
 
     let rx = client.subscribe(vec![IpcEvent::Window, IpcEvent::Tick])?;
     let mut last_focused = None;
@@ -199,6 +197,14 @@ fn main() -> Result<()> {
                                 match sploosh(&mut client, &mut redis_conn, &container) {
                                     Err(err) => error!("sploosh() = {:?}", err),
                                     res => info!("sploosh() = {:?}", res),
+                                }
+                                // TODO provide a connection to execute actions without
+                                // using redis as a middle man.
+                                if let Some(ref last_focused) = last_focused {
+                                    let _: Option<()> =
+                                        last_focused["id"].as_u32().and_then(|id| {
+                                            redis_conn.lpush("sway:focused-windows", id).ok()
+                                        });
                                 }
                             }
                         }

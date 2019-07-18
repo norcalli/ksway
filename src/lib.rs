@@ -36,13 +36,6 @@ enum IpcCommandCode {
     SendTick = 10,
 }
 
-// trait SwayCommand {
-//     fn as_str() -> &'self str;
-// }
-
-// impl SwayCommand for {
-// }
-
 #[derive(Debug)]
 pub enum IpcCommand {
     Run(String),
@@ -114,9 +107,9 @@ pub enum Error {
     Io(io::Error),
 }
 
-pub type SwayResult<T> = Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn guess_sway_socket_path() -> SwayResult<PathBuf> {
+pub fn guess_sway_socket_path() -> Result<PathBuf> {
     match std::env::var("SWAYSOCK") {
         Ok(path) => Ok(PathBuf::from(path)),
         Err(_) => {
