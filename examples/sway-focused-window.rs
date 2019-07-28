@@ -16,7 +16,6 @@ enum Error {
 fn main() -> Result<(), Error> {
     let mut client = Client::connect()?;
 
-    client.ipc(ipc_command::get_tree())?;
     let tree_data = json::parse(str::from_utf8(&client.ipc(ipc_command::get_tree())?)?)?;
     utils::preorder(&tree_data, &mut |value| {
         if value["focused"].as_bool() == Some(true) {
