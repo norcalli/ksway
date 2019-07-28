@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::Read;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -128,16 +128,22 @@ impl Client {
     /// In order to receive events, you must call `client.poll()` to check for new subscription
     /// events. You can see an example of this in the examples.
     /// A minimal loop is as such:
-    /// ```rust
+    /// ```no_run
+    /// use ksway::IpcEvent;
+    ///
+    /// let mut client = ksway::Client::connect()?;
+    ///
     /// let rx = client.subscribe(vec![IpcEvent::Window, IpcEvent::Tick])?;
     /// loop {
     ///     while let Ok((payload_type, payload)) = rx.try_recv() {
     ///         match payload_type {
-    ///             IpcEvent::Window => { ... }
+    ///             IpcEvent::Window => {},
+    ///             _ => {},
     ///         }
     ///     }
     ///     client.poll()?;
     /// }
+    /// # Ok::<(), ksway::Error>(())
     /// ```
     pub fn subscribe(
         &mut self,

@@ -417,11 +417,11 @@ mod tests {
         assert_eq!(&buf[0..prefix.len()], prefix);
         assert_eq!(
             buf[prefix.len()..prefix.len() + 4],
-            (dbg!(code as u32)).to_ne_bytes()
+            dbg!(payload.len() as u32).to_ne_bytes()
         );
         assert_eq!(
             buf[prefix.len() + 4..prefix.len() + 8],
-            (dbg!(payload.len()) as u32).to_ne_bytes()
+            dbg!(code as u32).to_ne_bytes()
         );
         assert_eq!(&buf[prefix.len() + 8..], payload);
     }
