@@ -1,5 +1,7 @@
 # `ksway`
 
+[![docs.rs](https://docs.rs/ksway/badge.svg)](https://docs.rs/ksway)
+
 This library provides a convenient interface for quickly making scripts for
 `i3` and [`sway`](https://github.com/swaywm/sway) (since they share an IPC
 interface API). It will mainly be focused on `sway` if that compatibility

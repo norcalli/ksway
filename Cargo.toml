@@ -1,8 +1,14 @@
 [package]
 name = "ksway"
 version = "0.1.0"
-authors = ["Ashkan Kiani <ashkan.k.kiani@gmail.com>"]
+authors = ["Ashkan Kiani"]
 edition = "2018"
+license = "MIT"
+description = "Crate for interfacing with sway/i3 ipc"
+keywords = ["i3", "sway", "ipc"]
+readme = "README.md"
+homepage = "https://github.com/norcalli/ksway/"
+repository = "https://github.com/norcalli/ksway/"
 
 [dependencies]
 globwalk = "0.7.1"
