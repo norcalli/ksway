@@ -81,6 +81,9 @@ loop {
 
 ## Full examples
 
+You can install these examples with `cargo install ksway --examples` to install all of them or
+`cargo install ksway --example sway-focused-window` to install a specific example.
+
 - `examples/sway-focused-window $PATH`: Outputs the json for the currently focused window with no arguments, but you can additionally specify a path to extract, e.g.
 	- `sway-focused-window` -> full json
 	- `sway-focused-window window_rect width`
