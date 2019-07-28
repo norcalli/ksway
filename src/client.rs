@@ -19,10 +19,12 @@ pub struct Client {
 type RawResponse = (u32, Vec<u8>);
 
 impl Client {
+    /// The socket path that we are currently connected to.
     pub fn socket_path(&self) -> &Path {
         &self.socket_path
     }
 
+    /// Connect to a specific socket.
     pub fn connect_to_path<P: Into<PathBuf>>(path: P) -> Result<Self> {
         let path = path.into();
         let socket = UnixStream::connect(&path)?;
@@ -35,10 +37,14 @@ impl Client {
         })
     }
 
+    /// Guess which socket to connect to using `ksway::guess_sway_socket_path()`.
+    /// This first checks for SWAYSOCK environment variable, or tries to find an appropriate
+    /// socket when run outside of a graphical environment. See `guess_sway_socket_path()` for more.
     pub fn connect() -> Result<Self> {
         Self::connect_to_path(guess_sway_socket_path()?)
     }
 
+    /// Call this to check for new subscription events from the socket.
     pub fn poll(&mut self) -> Result<()> {
         let (payload_type, payload) = match self.read_response() {
             Ok(value) => value,
@@ -77,6 +83,13 @@ impl Client {
         Ok(())
     }
 
+    /// Send an ipc command. Used with the IpcCommand enum or constructed from the convenience
+    /// methods under ksway::ipc_command::*
+    /// An alias for `client.ipc(ipc_command::run(...))` is provided at `client.run(...)`
+    ///
+    /// The result is immediately read, aka this is a synchronous call.
+    /// The raw bytes are returned in order to avoid dependency on any particular json
+    /// implementation.
     pub fn ipc(&mut self, command: IpcCommand) -> Result<Vec<u8>> {
         let code = command.code() as u32;
         self.send_command(command)?;
@@ -94,10 +107,38 @@ impl Client {
         }
     }
 
+    /// Alias for `client.ipc(ipc_command::run(...))`. Accepts any string as a parameter, which
+    /// would be equivalent to `swaymsg $command`, but some type safety and convenience is provided
+    /// via `ksway::Command` and `ksway::command::*` (which provides a function interface instead
+    /// of an enum)
+    ///
+    /// The result is immediately read, aka this is a synchronous call.
+    /// The raw bytes are returned in order to avoid dependency on any particular json
+    /// implementation.
     pub fn run<T: ToString>(&mut self, command: T) -> Result<Vec<u8>> {
         self.ipc(ipc_command::run(command.to_string()))
     }
 
+    /// Subscribe to events from sway. You can only subscribe once for a client connection, but
+    /// there's really no point to subscribing multiple times. It will return
+    /// Error::AlreadySubscribed if you attempt to do so.
+    ///
+    /// Returns a crossbeam channel that you can use to poll for events.
+    ///
+    /// In order to receive events, you must call `client.poll()` to check for new subscription
+    /// events. You can see an example of this in the examples.
+    /// A minimal loop is as such:
+    /// ```rust
+    /// let rx = client.subscribe(vec![IpcEvent::Window, IpcEvent::Tick])?;
+    /// loop {
+    ///     while let Ok((payload_type, payload)) = rx.try_recv() {
+    ///         match payload_type {
+    ///             IpcEvent::Window => { ... }
+    ///         }
+    ///     }
+    ///     client.poll()?;
+    /// }
+    /// ```
     pub fn subscribe(
         &mut self,
         event_types: Vec<IpcEvent>,

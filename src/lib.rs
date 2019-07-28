@@ -101,14 +101,22 @@ impl IpcCommand {
 
 #[derive(derive_more::From, derive_more::Display, Debug)]
 pub enum Error {
+    /// Could not find or reliably guess a SWAYSOCK
     SockPathNotFound,
+    /// Generic error for subscription problems. Currently includes send failure on the channel
+    /// used to contain subscription events.
     SubscriptionError,
+    /// Error thrown when you try to subscribe multiple times on a single connection, which is
+    /// not supported.
     AlreadySubscribed,
     Io(io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Try to guess the value of SWAYSOCK by first checking for the environment variable or using the
+/// most recently created sock file at /run/user/$UID/sway-ipc.*.sock. This is useful for the
+/// situation where a command is being run from systemd or outside of the GUI environment.
 pub fn guess_sway_socket_path() -> Result<PathBuf> {
     match std::env::var("SWAYSOCK") {
         Ok(path) => Ok(PathBuf::from(path)),
@@ -390,6 +398,8 @@ pub enum Command {
 }
 
 impl Command {
+    /// Prepend criteria to this command. A vec is used so that ordering can be deterministic,
+    /// which can be useful.
     pub fn with_criteria(self, criteria: Vec<criteria::Criteria>) -> Self {
         Command::WithCriteria {
             criteria,
@@ -397,17 +407,6 @@ impl Command {
         }
     }
 }
-
-// function Sway.connect(SWAYSOCK)
-//   SWAYSOCK = SWAYSOCK or guessSwaysock()
-//   local self = Sway.__new()
-
-//   self.payloads = {}
-//   self.socket = assert(M.socket(M.AF_UNIX, M.SOCK_STREAM, 0))
-//   M.connect(self.socket, {family=M.AF_UNIX, path=SWAYSOCK})
-
-//   return self
-// end
 
 #[cfg(test)]
 mod tests {
