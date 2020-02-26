@@ -14,6 +14,7 @@ enum Error {
     Utf8(str::Utf8Error),
     Json(json::Error),
     InvalidExpression,
+    NoWindows,
 }
 
 type Expression = Box<Fn(&JsonValue) -> bool>;
@@ -131,6 +132,10 @@ fn main() -> Result<(), Error> {
         }
         None::<()>
     });
+
+    if windows.len() == 0 {
+        return Err(Error::NoWindows);
+    }
 
     let mut target_window = &windows[0];
 
