@@ -150,7 +150,7 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    let window_id = target_window["id"].as_u32().expect("Couldn't find a window id");
+    let window_id = target_window["id"].as_u64().expect("Couldn't find a window id");
     if print_id {
         println!("{}", window_id);
     } else if print_json {

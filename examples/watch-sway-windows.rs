@@ -124,7 +124,7 @@ fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonVal
         if !rect.is_object() {
             return None;
         }
-        let window_id = value["id"].as_u32().unwrap();
+        let window_id = value["id"].as_u64().unwrap();
         debug!("sploosh/window/id = {}", window_id);
         // Use redis to check if something is splooshy
         // TODO: vacuum this out sometimes?
@@ -202,7 +202,7 @@ fn main() -> Result<()> {
                                 // using redis as a middle man.
                                 if let Some(ref last_focused) = last_focused {
                                     let _: Option<()> =
-                                        last_focused["id"].as_u32().and_then(|id| {
+                                        last_focused["id"].as_u64().and_then(|id| {
                                             redis_conn.lpush("sway:focused-windows", id).ok()
                                         });
                                 }

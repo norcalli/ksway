@@ -152,7 +152,7 @@ pub mod criteria {
         /// Compare against the internal container ID, which you can find via IPC. If value is __focused__, then the id must be the same as that of the
         /// currently focused window.
         #[display(fmt = "con_id=\"{}\"", "_0")]
-        ConId(OrFocused<u32>),
+        ConId(OrFocused<u64>),
 
         /// Compare against the window marks. Can be a regular expression.
         #[display(fmt = "con_mark=\"{}\"", "_0")]
@@ -164,7 +164,7 @@ pub mod criteria {
 
         /// Compare value against the X11 window ID. Must be numeric.
         #[display(fmt = "id=\"{}\"", "_0")]
-        Id(u32),
+        Id(u64),
 
         /// Compare value against the window instance. Can be a regular expression. If value is __focused__, then the window instance must be the same
         /// as that of the currently focused window.
@@ -257,7 +257,7 @@ pub mod criteria {
 
     /// Compare against the internal container ID, which you can find via IPC. If value is __focused__, then the id must be the same as that of the
     /// currently focused window.
-    pub fn con_id<T: Into<OrFocused<u32>>>(t: T) -> Criteria {
+    pub fn con_id<T: Into<OrFocused<u64>>>(t: T) -> Criteria {
         Criteria::ConId(t.into())
     }
 
@@ -272,7 +272,7 @@ pub mod criteria {
     }
 
     /// Compare value against the X11 window ID. Must be numeric.
-    pub fn id<T: Into<u32>>(t: T) -> Criteria {
+    pub fn id<T: Into<u64>>(t: T) -> Criteria {
         Criteria::Id(t.into())
     }
 
@@ -417,11 +417,11 @@ mod tests {
         assert_eq!(&buf[0..prefix.len()], prefix);
         assert_eq!(
             buf[prefix.len()..prefix.len() + 4],
-            dbg!(payload.len() as u32).to_ne_bytes()
+            dbg!(payload.len() as u64).to_ne_bytes()
         );
         assert_eq!(
             buf[prefix.len() + 4..prefix.len() + 8],
-            dbg!(code as u32).to_ne_bytes()
+            dbg!(code as u64).to_ne_bytes()
         );
         assert_eq!(&buf[prefix.len() + 8..], payload);
     }
