@@ -102,19 +102,22 @@ fn main() -> Result<(), Error> {
         .expect("Need an increment")
         .parse::<i32>()
         .unwrap();
-    let mut dry_run = false;
+    let mut print_id = false;
+    let mut print_json = false;
     for arg in args {
-        if arg == "-d" {
-            dry_run = true;
-            continue;
+        match arg.as_str() {
+            "-d" => { print_id = true; continue; }
+            "-D" => { print_json = true; continue; }
+            _ => {
+                let new_clause = parse_expression(arg)?;
+                expression = match expression {
+                    Some(expression) => Some(Box::new(move |js: &JsonValue| {
+                        expression(js) && new_clause(js)
+                    })),
+                    None => Some(new_clause),
+                };
+            }
         }
-        let new_clause = parse_expression(arg)?;
-        expression = match expression {
-            Some(expression) => Some(Box::new(move |js: &JsonValue| {
-                expression(js) && new_clause(js)
-            })),
-            None => Some(new_clause),
-        };
     }
 
     let expression = expression.unwrap_or_else(|| Box::new(|_: &JsonValue| true));
@@ -148,8 +151,10 @@ fn main() -> Result<(), Error> {
     }
 
     let window_id = target_window["id"].as_u32().expect("Couldn't find a window id");
-    if dry_run {
+    if print_id {
         println!("{}", window_id);
+    } else if print_json {
+        println!("{}", target_window);
     } else {
         let _result = client.run(command::raw("focus").with_criteria(vec![con_id(window_id)]));
     }
