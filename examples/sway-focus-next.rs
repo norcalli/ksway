@@ -76,8 +76,8 @@ fn parse_expression(expr: impl AsRef<str>) -> Result<Expression, Error> {
                       (?P<op>[><^$]=?|[!=]=) # operator
                       (?P<rval>.*)$ # everything on the right (including whitespace)
                       "#
-        )
-        .unwrap();
+                      )
+            .unwrap();
     }
 
     let cap = RE.captures(s).ok_or_else(|| Error::InvalidExpression)?;
