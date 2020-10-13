@@ -31,14 +31,14 @@ impl ResolutionPart {
 
 #[derive(Display, FromStr, Debug, Copy, Clone)]
 enum Resolution {
-    #[display("{0}x{1}")]
-    Both(ResolutionPart, ResolutionPart),
-    #[display("{0}")]
-    One(ResolutionPart),
     #[display("W{0}")]
     SquareWidth(ResolutionPart),
     #[display("H{0}")]
     SquareHeight(ResolutionPart),
+    #[display("{0}x{1}")]
+    Both(ResolutionPart, ResolutionPart),
+    #[display("{0}")]
+    One(ResolutionPart),
 }
 
 #[derive(StructOpt, Debug)]
