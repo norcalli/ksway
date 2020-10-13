@@ -1,6 +1,5 @@
 use anyhow::*;
-use criteria::*;
-use ksway::{cmd, SwayClient, SwayClientJson, criteria, Client};
+use ksway::{cmd, criteria::focused, Client, SwayClient, SwayClientJson};
 use log::*;
 use parse_display::*;
 use structopt::StructOpt;
