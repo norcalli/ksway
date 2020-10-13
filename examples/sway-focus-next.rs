@@ -1,23 +1,13 @@
 use std::str;
 
-use derive_more::*;
-use json::JsonValue;
-use ksway::{command, criteria::*, ipc_command, Client};
+use anyhow::*;
+use ksway::{cmd, Client, SwayClient, SwayClientJson};
 use lazy_static::lazy_static;
+use serde_json::Value as JsonValue;
 
 mod utils;
 
-#[derive(From, Display, Debug)]
-enum Error {
-    Io(std::io::Error),
-    Sway(ksway::Error),
-    Utf8(str::Utf8Error),
-    Json(json::Error),
-    InvalidExpression,
-    NoWindows,
-}
-
-type Expression = Box<Fn(&JsonValue) -> bool>;
+type Expression = Box<dyn Fn(&JsonValue) -> bool>;
 
 fn make_operator(s: &str) -> fn(&JsonValue, &JsonValue) -> bool {
     match s {
@@ -76,25 +66,27 @@ fn parse_expression(expr: impl AsRef<str>) -> Result<Expression, Error> {
                       (?P<op>[><^$]=?|[!=]=) # operator
                       (?P<rval>.*)$ # everything on the right (including whitespace)
                       "#
-                      )
-            .unwrap();
+        )
+        .unwrap();
     }
 
-    let cap = RE.captures(s).ok_or_else(|| Error::InvalidExpression)?;
+    let cap = RE
+        .captures(s)
+        .ok_or_else(|| anyhow!("Invalid expression"))?;
     let path = cap.name("path").unwrap().as_str();
     let operator = cap.name("op").unwrap().as_str();
     let rval = cap.name("rval").unwrap().as_str().to_owned();
 
     let path: Vec<String> = path.split('/').map(|s| s.to_owned()).collect();
     let operator = make_operator(operator);
-    let target = json::parse(&rval)?;
+    let target = serde_json::from_str(&rval)?;
 
     Ok(Box::new(move |js: &JsonValue| {
         operator(utils::extract_path(js, &path), &target)
     }))
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     let mut expression: Option<Expression> = None;
     let mut args = std::env::args().skip(1);
     let increment = args
@@ -106,8 +98,14 @@ fn main() -> Result<(), Error> {
     let mut print_json = false;
     for arg in args {
         match arg.as_str() {
-            "-d" => { print_id = true; continue; }
-            "-D" => { print_json = true; continue; }
+            "-d" => {
+                print_id = true;
+                continue;
+            }
+            "-D" => {
+                print_json = true;
+                continue;
+            }
             _ => {
                 let new_clause = parse_expression(arg)?;
                 expression = match expression {
@@ -124,8 +122,7 @@ fn main() -> Result<(), Error> {
 
     let mut client = Client::connect()?;
 
-    client.ipc(ipc_command::get_tree())?;
-    let tree_data = json::parse(str::from_utf8(&client.ipc(ipc_command::get_tree())?)?)?;
+    let tree_data = client.get_tree_json()?;
     let mut windows = Vec::new();
 
     utils::preorder(&tree_data, &mut |value| {
@@ -136,8 +133,8 @@ fn main() -> Result<(), Error> {
         None::<()>
     });
 
-    if windows.len() == 0 {
-        return Err(Error::NoWindows);
+    if windows.is_empty() {
+        bail!("no windows found");
     }
 
     let mut target_window = &windows[0];
@@ -150,13 +147,15 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    let window_id = target_window["id"].as_u64().expect("Couldn't find a window id");
+    let window_id = target_window["id"]
+        .as_u64()
+        .expect("Couldn't find a window id");
     if print_id {
         println!("{}", window_id);
     } else if print_json {
         println!("{}", target_window);
     } else {
-        let _result = client.run(command::raw("focus").with_criteria(vec![con_id(window_id)]));
+        let _result = client.run(cmd!([con_id=window_id] "focus"));
     }
     Ok(())
 }

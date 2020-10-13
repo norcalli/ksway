@@ -62,7 +62,7 @@ client.ipc(ipc_command::get_workspaces())?;
 client.ipc(ipc_command::get_version())?;
 ```
 
-### subscribe*
+### subscribe
 
 ```rust
 use ksway::IpcEvent;

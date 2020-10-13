@@ -4,21 +4,23 @@ pub use client::Client;
 
 use itertools::join;
 use serde::Serialize;
+pub use serde_json::Value as JsonValue;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
 // Naming convention: https://docs.microsoft.com/en-us/dotnet/standard/design-guidelines/enum
 #[derive(Serialize, Debug, num_derive::FromPrimitive)]
 #[serde(rename_all = "snake_case")]
+#[repr(u32)]
 pub enum IpcEvent {
-    Workspace = 0x80000000,
-    Mode = 0x80000002,
-    Window = 0x80000003,
-    BarconfigUpdate = 0x80000004,
-    Binding = 0x80000005,
-    Shutdown = 0x80000006,
-    Tick = 0x80000007,
-    BarStatusUpdate = 0x80000014,
+    Workspace = 0x8000_0000,
+    Mode = 0x8000_0002,
+    Window = 0x8000_0003,
+    BarconfigUpdate = 0x8000_0004,
+    Binding = 0x8000_0005,
+    Shutdown = 0x8000_0006,
+    Tick = 0x8000_0007,
+    BarStatusUpdate = 0x8000_0014,
 }
 
 #[derive(Debug)]
@@ -53,29 +55,29 @@ pub enum IpcCommand {
 
 impl IpcCommand {
     fn write<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        w.write(b"i3-ipc")?;
+        w.write_all(b"i3-ipc")?;
         match self {
             IpcCommand::Run(command) => {
                 let payload = command.as_bytes();
-                w.write(&(payload.len() as u32).to_ne_bytes())?;
-                w.write(&(self.code() as u32).to_ne_bytes())?;
-                w.write(payload)?;
+                w.write_all(&(payload.len() as u32).to_ne_bytes())?;
+                w.write_all(&(self.code() as u32).to_ne_bytes())?;
+                w.write_all(payload)?;
             }
             IpcCommand::SendTick(payload) => {
-                w.write(&(payload.len() as u32).to_ne_bytes())?;
-                w.write(&(self.code() as u32).to_ne_bytes())?;
-                w.write(payload)?;
+                w.write_all(&(payload.len() as u32).to_ne_bytes())?;
+                w.write_all(&(self.code() as u32).to_ne_bytes())?;
+                w.write_all(payload)?;
             }
             IpcCommand::Subscribe(events) => {
                 let mut payload = Vec::new();
                 serde_json::to_writer(&mut payload, &events)?;
-                w.write(&(payload.len() as u32).to_ne_bytes())?;
-                w.write(&(self.code() as u32).to_ne_bytes())?;
-                w.write(&payload)?;
+                w.write_all(&(payload.len() as u32).to_ne_bytes())?;
+                w.write_all(&(self.code() as u32).to_ne_bytes())?;
+                w.write_all(&payload)?;
             }
             _ => {
-                w.write(&0u32.to_ne_bytes())?;
-                w.write(&(self.code() as u32).to_ne_bytes())?;
+                w.write_all(&0u32.to_ne_bytes())?;
+                w.write_all(&(self.code() as u32).to_ne_bytes())?;
             }
         }
         Ok(())
@@ -110,7 +112,10 @@ pub enum Error {
     /// not supported.
     AlreadySubscribed,
     Io(io::Error),
+    Json(serde_json::Error),
 }
+
+impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -134,10 +139,181 @@ pub fn guess_sway_socket_path() -> Result<PathBuf> {
     }
 }
 
+pub trait HasIpc {
+    /// Send an ipc command. Used with the IpcCommand enum or constructed from the convenience
+    /// methods under ksway::ipc_command::*
+    /// An alias for `client.ipc(ipc_command::run(...))` is provided at `client.run(...)`
+    ///
+    /// The result is immediately read, aka this is a synchronous call.
+    /// The raw bytes are returned in order to avoid dependency on any particular json
+    /// implementation.
+    fn ipc(&mut self, command: IpcCommand) -> Result<Vec<u8>>;
+}
+
+impl HasIpc for Client {
+    fn ipc(&mut self, command: IpcCommand) -> Result<Vec<u8>> {
+        self.ipc(command)
+    }
+}
+
+impl SwayClient for Client {}
+impl SwayClientJson for Client {}
+
+pub trait SwayClient: HasIpc {
+    /// Alias for `client.ipc(ipc_command::run(...))`. Accepts any string as a parameter, which
+    /// would be equivalent to `swaymsg $command`, but some type safety and convenience is provided
+    /// via `ksway::Command` and `ksway::command::*` (which provides a function interface instead
+    /// of an enum)
+    ///
+    /// The result is immediately read, aka this is a synchronous call.
+    /// The raw bytes are returned in order to avoid dependency on any particular json
+    /// implementation.
+    fn run<T: ToString>(&mut self, command: T) -> Result<Vec<u8>> {
+        self.ipc(ipc_command::run(command.to_string()))
+    }
+
+    // TODO:
+    //  make into trait for everything other than ipc?
+    //  then do HasIpc { ipc() } -> all these commands
+    //    - ashkan, Tue 13 Oct 2020 05:57:26 PM JST
+    fn get_bar_config(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_bar_config())
+    }
+
+    fn get_binding_modes(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_binding_modes())
+    }
+
+    fn get_config(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_config())
+    }
+
+    fn get_marks(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_marks())
+    }
+
+    fn get_outputs(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_outputs())
+    }
+
+    fn get_tree(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_tree())
+    }
+
+    fn get_version(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_version())
+    }
+
+    fn get_workspaces(&mut self) -> Result<Vec<u8>> {
+        self.ipc(crate::ipc_command::get_workspaces())
+    }
+}
+
+mod json {
+    use super::{JsonValue, Result, SwayClient};
+
+    pub fn preorder<T, F: FnMut(&JsonValue) -> Option<T>>(
+        value: &JsonValue,
+        visitor: &mut F,
+    ) -> Option<T> {
+        match visitor(value) {
+            None => (),
+            value => return value,
+        }
+        if let Some(obj) = value.as_object() {
+            for (_k, v) in obj.iter() {
+                match preorder(v, visitor) {
+                    None => (),
+                    value => return value,
+                }
+            }
+        } else if let Some(arr) = value.as_array() {
+            for v in arr.iter() {
+                match preorder(v, visitor) {
+                    None => (),
+                    value => return value,
+                }
+            }
+        }
+        None
+    }
+
+    fn payload_to_json(payload: Vec<u8>) -> Result<JsonValue> {
+        Ok(serde_json::from_slice(&payload)?)
+    }
+
+    pub trait SwayClientJson: SwayClient {
+        /// Alias for `client.ipc(ipc_command::run(...))`. Accepts any string as a parameter, which
+        /// would be equivalent to `swaymsg $command`, but some type safety and convenience is provided
+        /// via `ksway::Command` and `ksway::command::*` (which provides a function interface instead
+        /// of an enum)
+        ///
+        /// The result is immediately read, aka this is a synchronous call.
+        /// The raw bytes are returned in order to avoid dependency on any particular json
+        /// implementation.
+        fn run_json<T: ToString>(&mut self, command: T) -> Result<JsonValue> {
+            payload_to_json(self.run(command)?)
+        }
+
+        fn get_bar_config_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_bar_config()?)
+        }
+
+        fn get_binding_modes_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_binding_modes()?)
+        }
+
+        fn get_config_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_config()?)
+        }
+
+        fn get_marks_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_marks()?)
+        }
+
+        fn get_outputs_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_outputs()?)
+        }
+
+        fn get_tree_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_tree()?)
+        }
+
+        fn get_version_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_version()?)
+        }
+
+        fn get_workspaces_json(&mut self) -> Result<JsonValue> {
+            payload_to_json(self.get_workspaces()?)
+        }
+
+        fn focused_workspace(&mut self) -> Result<Option<JsonValue>> {
+            Ok(self.get_workspaces_json()?.as_array().and_then(|arr| {
+                arr.iter()
+                    .find(|c| c["focused"].as_bool() == Some(true))
+                    .cloned()
+            }))
+        }
+
+        fn focused_window(&mut self) -> Result<Option<JsonValue>> {
+            let tree_data = self.get_tree_json()?;
+
+            Ok(preorder(&tree_data, &mut |value| {
+                if value["focused"].as_bool() == Some(true) {
+                    return Some(value.clone());
+                }
+                None
+            }))
+        }
+    }
+}
+
+pub use json::SwayClientJson;
+
 pub mod criteria {
     use std::fmt::Display;
 
-    #[derive(derive_more::Display)]
+    #[derive(derive_more::Display, Debug)]
     pub enum Criteria {
         /// Compare value against the app id. Can be a regular expression. If value is __focused__, then the app id must be the same as that of the
         /// currently focused window. app_id are specific to Wayland applications.
@@ -207,7 +383,7 @@ pub mod criteria {
         Workspace(OrFocused<String>),
     }
 
-    #[derive(derive_more::Display)]
+    #[derive(derive_more::Display, Debug)]
     pub enum OrFocused<T> {
         #[display(fmt = "__focused__")]
         Focused,
@@ -379,18 +555,21 @@ pub mod ipc_command {
     }
 }
 
-#[derive(derive_more::Display)]
+#[derive(derive_more::Display, Debug)]
+#[display(
+    fmt = "[{}] {}",
+    r#"join(criteria.iter().map(ToString::to_string), " ")"#,
+    "command"
+)]
+pub struct CriteriaCommand {
+    criteria: Vec<criteria::Criteria>,
+    command: Box<Command>,
+}
+
+#[derive(derive_more::Display, Debug)]
 pub enum Command {
-    #[display(
-        fmt = "[{}] {}",
-        r#"join(criteria.iter().map(ToString::to_string), " ")"#,
-        "command"
-    )]
-    WithCriteria {
-        // TODO hashset?
-        criteria: Vec<criteria::Criteria>,
-        command: Box<Command>,
-    },
+    #[display(fmt = "{}", "_0")]
+    WithCriteria(CriteriaCommand),
     #[display(fmt = "exec {}", "_0")]
     Exec(String),
     #[display(fmt = "{}", "_0")]
@@ -401,11 +580,31 @@ impl Command {
     /// Prepend criteria to this command. A vec is used so that ordering can be deterministic,
     /// which can be useful.
     pub fn with_criteria(self, criteria: Vec<criteria::Criteria>) -> Self {
-        Command::WithCriteria {
-            criteria,
-            command: Box::new(self),
+        match self {
+            Command::WithCriteria(mut cmd) => {
+                cmd.criteria.extend(criteria);
+                Command::WithCriteria(cmd)
+            }
+            _ => Command::WithCriteria(CriteriaCommand {
+                criteria,
+                command: Box::new(self),
+            }),
         }
     }
+}
+
+#[macro_export]
+macro_rules! cmd {
+  ([$($k:ident$(=$v:expr)?)+] $($rest:tt)*) => {
+      cmd!($($rest)*).with_criteria(vec![$($crate::criteria::$k($($v)?)),*])
+    //   cmd!($($rest)*).with_criteria(vec![$($k($($v)?)),*])
+  };
+  (exec $($args:tt)*) => {
+      $crate::command::exec(format!($($args)*))
+  };
+  ($($args:tt)*) => {
+      $crate::command::raw(format!($($args)*))
+  };
 }
 
 #[cfg(test)]

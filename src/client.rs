@@ -107,18 +107,6 @@ impl Client {
         }
     }
 
-    /// Alias for `client.ipc(ipc_command::run(...))`. Accepts any string as a parameter, which
-    /// would be equivalent to `swaymsg $command`, but some type safety and convenience is provided
-    /// via `ksway::Command` and `ksway::command::*` (which provides a function interface instead
-    /// of an enum)
-    ///
-    /// The result is immediately read, aka this is a synchronous call.
-    /// The raw bytes are returned in order to avoid dependency on any particular json
-    /// implementation.
-    pub fn run<T: ToString>(&mut self, command: T) -> Result<Vec<u8>> {
-        self.ipc(ipc_command::run(command.to_string()))
-    }
-
     /// Subscribe to events from sway. You can only subscribe once for a client connection, but
     /// there's really no point to subscribing multiple times. It will return
     /// Error::AlreadySubscribed if you attempt to do so.

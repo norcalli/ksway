@@ -1,102 +1,27 @@
-use std::str;
-
-use derive_more::*;
-use json::JsonValue;
 use log::*;
 use redis::{Client as RedisClient, Commands, Connection};
 
-use criteria::*;
-use ksway::{command, criteria, ipc_command, Client, IpcEvent};
+use anyhow::{anyhow, Result};
+use ksway::{cmd, Client, IpcEvent, JsonValue, SwayClient, SwayClientJson};
 
 mod utils;
 
-#[derive(From, Display, Debug)]
-enum Error {
-    FocusedWorkspaceNotFound,
-    Io(std::io::Error),
-    Sway(ksway::Error),
-    Utf8(str::Utf8Error),
-    Json(json::Error),
-    Redis(redis::RedisError),
-}
-
-type Result<T> = std::result::Result<T, Error>;
-
-fn payload_to_json(payload: Vec<u8>) -> Result<JsonValue> {
-    Ok(json::parse(str::from_utf8(&payload)?)?)
-}
-
-#[derive(Debug)]
-enum AlignmentVerbs {
-    Top,
-    Left,
-    Right,
-    Bottom,
-    Center,
-    CenterX,
-    CenterY,
-}
-
-const GAPX: i32 = 0;
-const GAPY: i32 = 0;
-
-fn calculate_coords(
-    w_x: i32,
-    w_y: i32,
-    w_w: i32,
-    w_h: i32,
-    w: i32,
-    h: i32,
-    ix: i32,
-    iy: i32,
-    verbs: &[AlignmentVerbs],
-) -> (i32, i32) {
-    use AlignmentVerbs::*;
-
-    let mut x = ix - w_x;
-    let mut y = iy - w_y;
-    for verb in verbs {
-        match verb {
-            Top => y = GAPY,
-            Bottom => y = w_h - h - GAPY,
-            Left => x = GAPX,
-            Right => x = w_w - w - GAPX,
-            Center => {
-                x = (w_w - w) / 2;
-                y = (w_h - h) / 2;
-            }
-            CenterX => x = (w_w - w) / 2,
-            CenterY => y = (w_h - h) / 2,
-        }
-    }
-    return (x + w_x, y + w_y);
-}
+use utils::*;
 
 fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonValue) -> Result<()> {
     use AlignmentVerbs::*;
 
     // Get focused workspace
-    let workspaces = payload_to_json(client.ipc(ipc_command::get_workspaces())?)?;
-    let focused_workspace = workspaces
-        .members()
-        .find(|c| c["focused"].as_bool() == Some(true))
-        .ok_or_else(|| Error::FocusedWorkspaceNotFound)?;
+    let focused_workspace = client
+        .focused_workspace()?
+        .ok_or_else(|| anyhow!("Couldn't find focused workspace"))?;
+
+    debug!("workspace: {}", focused_workspace);
 
     // Get focused window topleft coords
-    let (fx, fy) = {
-        let rect = &container["rect"];
-        (rect["x"].as_i32().unwrap(), rect["y"].as_i32().unwrap())
-    };
+    let (fx, fy, fw, fh) = get_rect(&container)?;
     // Get workspace rectangle
-    let (w_x, w_y, w_w, w_h) = {
-        let rect = &focused_workspace["rect"];
-        (
-            rect["x"].as_i32().unwrap(),
-            rect["y"].as_i32().unwrap(),
-            rect["width"].as_i32().unwrap(),
-            rect["height"].as_i32().unwrap(),
-        )
-    };
+    let (w_x, w_y, w_w, w_h) = get_rect(&focused_workspace)?;
 
     // These are the possible positions to send the floating container
     const VERBS: &[&[AlignmentVerbs]] = &[
@@ -112,31 +37,46 @@ fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonVal
         // &[CenterY, Bottom],
     ];
 
-    let tree = payload_to_json(client.ipc(ipc_command::get_tree())?)?;
-    // Find floating & visible windows to reposition
-    utils::preorder(&tree, &mut |value| -> Option<()> {
+    // let (w_x, w_y) = (0, 0);
+    // let outputs = payload_to_json(client.ipc(ipc_command::get_outputs())?)?;
+    // let focused_output = outputs
+    //     .members()
+    //     .find(|c| c["focused"].as_bool() == Some(true))
+    //     .ok_or_else(|| anyhow!("Failed to find focused output"))?;
+    // let (w_w, w_h) = {
+    //     let mode = &focused_output["current_mode"];
+    //     (
+    //         mode["width"]
+    //             .as_i32()
+    //             .ok_or_else(|| anyhow!("Invalid mode"))?,
+    //         mode["height"]
+    //             .as_i32()
+    //             .ok_or_else(|| anyhow!("Invalid mode"))?,
+    //     )
+    // };
+
+    let (cx, cy) = ((fx + fw) / 2, (fy + fh) / 2);
+
+    for value in focused_workspace["floating_nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+    {
         if !(value["type"].as_str() == Some("floating_con")
             && value["visible"].as_bool() == Some(true))
         {
-            return None;
+            continue;
         }
-        let rect = &value["rect"];
-        if !rect.is_object() {
-            return None;
-        }
+        let (r_x, r_y, r_w, r_h) = get_rect(&value)?;
         let window_id = value["id"].as_u64().unwrap();
         debug!("sploosh/window/id = {}", window_id);
         // Use redis to check if something is splooshy
         // TODO: vacuum this out sometimes?
         let n: i32 = redis_conn.hget("sway:splooshy", window_id).unwrap_or(0i32);
         debug!("sploosh/window/sploosh_factor = {}", n);
-        if !(n % 2 == 1) {
-            return None;
+        if n % 2 == 0 {
+            continue;
         }
-        let r_w = rect["width"].as_i32().unwrap();
-        let r_h = rect["height"].as_i32().unwrap();
-        let r_x = rect["x"].as_i32().unwrap();
-        let r_y = rect["y"].as_i32().unwrap();
 
         // Find the furthest place to send this to based on the verbs.
         // This overlaps windows currently.
@@ -144,30 +84,47 @@ fn sploosh(client: &mut Client, redis_conn: &mut Connection, container: &JsonVal
         let (mx, my) = VERBS
             .iter()
             // Possible positions
-            .map(|verbs| calculate_coords(w_x, w_y, w_w, w_h, r_w, r_h, r_x, r_y, verbs))
+            .map(|verbs| {
+                let (x, y) = calculate_coords(w_x, w_y, w_w, w_h, r_w, r_h, r_x, r_y, verbs);
+                let clamped = (
+                    x.max(w_x).min(w_x + w_w - r_w),
+                    y.max(w_y).min(w_y + w_h - r_h),
+                );
+                debug!(
+                    "verb test: {:?} -> {:?} -> {:?}",
+                    (w_x, w_y, w_w, w_h, r_w, r_h, r_x, r_y, verbs),
+                    (x, y),
+                    clamped
+                );
+                clamped
+            })
             .max_by_key(|(x, y)| {
                 // Distance from topleft of focused window
-                let result = (fx - x).pow(2) + (fy - y).pow(2);
+                let result = (cx - x).pow(2) + (cy - y).pow(2);
                 (result as f32).sqrt() as i32
             })
             .unwrap();
         debug!("sploosh/window/(mx,my) = ({}, {})", mx, my);
         // Move the floating window.
-        let _result = client.run(
-            command::raw(format!("move absolute position {} {}", mx, my))
-                .with_criteria(vec![con_id(window_id)]),
-        );
-        match _result {
-            Err(err) => error!("sploosh/move() = {:?}", err),
-            _ => (),
+        if let Err(err) =
+            client.run(cmd!([con_id=window_id] "move absolute position {} {}", mx, my))
+        {
+            error!("sploosh/move() = {:?}", err);
         }
-        None
-    });
+    }
     Ok(())
+}
+
+struct Config {
+    max_focused_windows: usize,
 }
 
 fn main() -> Result<()> {
     env_logger::init();
+
+    let config = Config {
+        max_focused_windows: 100,
+    };
 
     let mut client = Client::connect()?;
     let redis_client = RedisClient::open("redis://127.0.0.1")?;
@@ -175,16 +132,18 @@ fn main() -> Result<()> {
 
     info!("{}", client.socket_path().display());
 
+    // NOTE:
+    //  Clean up the previous FOCUSED_WINDOWS_KEY and ignore errors.
+    //    - ashkan, Wed 02 Sep 2020 02:20:30 PM JST
+    let _ = redis_conn.del::<_, ()>(FOCUSED_WINDOWS_KEY).ok();
+
     let rx = client.subscribe(vec![IpcEvent::Window, IpcEvent::Tick])?;
     let mut last_focused = None;
     loop {
         while let Ok((payload_type, payload)) = rx.try_recv() {
-            match payload_type {
+            let event: JsonValue = serde_json::from_slice(&payload)?;
+            let should_sploosh = match payload_type {
                 IpcEvent::Window => {
-                    let payload = str::from_utf8(&payload)?;
-                    debug!("event: {}", &payload);
-                    let event = json::parse(payload)?;
-
                     // Focus changes only
                     match event["change"].as_str() {
                         Some("focus") => {
@@ -194,53 +153,47 @@ fn main() -> Result<()> {
                                 && container["type"].as_str() != Some("floating_con")
                             {
                                 last_focused = Some(container.clone());
-                                match sploosh(&mut client, &mut redis_conn, &container) {
-                                    Err(err) => error!("sploosh() = {:?}", err),
-                                    res => info!("sploosh() = {:?}", res),
-                                }
                                 // TODO provide a connection to execute actions without
                                 // using redis as a middle man.
-                                if let Some(ref last_focused) = last_focused {
-                                    let _: Option<()> =
-                                        last_focused["id"].as_u64().and_then(|id| {
-                                            redis_conn.lpush("sway:focused-windows", id).ok()
-                                        });
-                                }
+                                (|| -> Option<()> {
+                                    let id = container["id"].as_u64()?;
+                                    redis_conn.lpush(FOCUSED_WINDOWS_KEY, id).ok()?;
+                                    redis_conn
+                                        .ltrim(
+                                            FOCUSED_WINDOWS_KEY,
+                                            0,
+                                            config.max_focused_windows as isize,
+                                        )
+                                        .ok()
+                                })();
+                                true
+                            } else {
+                                false
                             }
                         }
-                        Some("floating") => {
-                            if let Some(ref container) = last_focused {
-                                match sploosh(&mut client, &mut redis_conn, &container) {
-                                    Err(err) => error!("sploosh() = {:?}", err),
-                                    res => info!("sploosh() = {:?}", res),
-                                }
-                            }
-                        }
-                        _ => (),
+                        Some("floating") => true,
+                        _ => false,
                     }
                 }
                 IpcEvent::Tick => {
-                    let payload = str::from_utf8(&payload)?;
-                    debug!("tick {}", payload);
-                    let event = json::parse(payload)?;
                     if event["first"].as_bool() == Some(true) {
                         continue;
                     }
                     let payload = event["payload"].as_str().unwrap();
-                    if payload == "sploosh" {
-                        debug!("tick/sploosh");
-                        if let Some(ref container) = last_focused {
-                            match sploosh(&mut client, &mut redis_conn, &container) {
-                                Err(err) => error!("sploosh() = {:?}", err),
-                                res => info!("sploosh() = {:?}", res),
-                            }
-                        }
+                    payload == "sploosh"
+                }
+                _ => false,
+            };
+            if should_sploosh {
+                debug!("tick/sploosh");
+                if let Some(ref container) = last_focused {
+                    match sploosh(&mut client, &mut redis_conn, &container) {
+                        Ok(res) => info!("sploosh() = {:?}", res),
+                        Err(err) => error!("sploosh() = {:?}", err),
                     }
                 }
-                _ => (),
             }
         }
         client.poll()?;
     }
-    Ok(())
 }

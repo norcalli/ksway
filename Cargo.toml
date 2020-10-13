@@ -22,12 +22,15 @@ num-traits = "0.2.8"
 num-derive = "0.2.5"
 
 [dev-dependencies]
-json = "0.11.14"
 redis = "0.10.0"
 log = "0.4.6"
 env_logger = "0.6.1"
 regex = "1.1.7"
 lazy_static = "1.3.0"
+anyhow = "1.0.32"
+structopt = "0.3.18"
+parse-display = "0.3.0"
+once_cell = "1.4.1"
 
 [[example]]
 name = "utils"
