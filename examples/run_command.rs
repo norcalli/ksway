@@ -1,7 +1,7 @@
 use std::str;
 
 use derive_more::*;
-use ksway::{cmd, command, criteria, Client, IpcEvent, SwayClient};
+use ksway::{cmd, Client, IpcEvent, SwayClient};
 
 #[derive(From, Display, Debug)]
 enum Error {
@@ -12,8 +12,6 @@ enum Error {
 
 fn main() -> Result<(), Error> {
     let mut client = Client::connect()?;
-
-    use criteria::*;
 
     println!("{}", client.socket_path().display());
     // let cmd = command::raw("focus").with_criteria(vec![floating(), title("mpv")]);
